@@ -2,11 +2,9 @@
 
 import numpy as np
 import pandas as pd
-# from main import getMyPosition as getPosition
-# from main_2 import getMyPosition as getPosition
-from main_ema_macd import getMyPosition as getPosition
-# from josh_code import getMyPosition as getPosition
-nInst = 50
+from polygon import getMyPosition as getPosition
+
+nInst = 0
 nt = 0
 commRate = 0.0005
 dlrPosLimit = 10000
@@ -66,7 +64,7 @@ def calcPL(prcHist, numTestDays):
 
 
 
-(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll,200) 
+(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll,200)
 score = meanpl - 0.1*plstd
 print ("=====")
 print ("mean(PL): %.1lf" % meanpl)
