@@ -29,7 +29,7 @@ PLOT_COLORS: Dict[str, str] = {
 }
 
 # default_strategy_filepath: str = "./boom/ema_macd_v2.py"
-default_strategy_filepath: str = "./boom/Strategy1_macd_milestone1.py"
+default_strategy_filepath: str = "./boom/milestone1_macd.py"
 default_strategy_function_name: str = "getMyPosition"
 strategy_file_not_found_message: str = "Strategy file not found"
 could_not_load_spec_message: str = "Could not load spec for module from strategy file"
