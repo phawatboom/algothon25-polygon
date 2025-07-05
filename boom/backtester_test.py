@@ -28,8 +28,8 @@ PLOT_COLORS: Dict[str, str] = {
     "sharpe_change": "#d62728",
 }
 
-# default_strategy_filepath: str = "./boom/main_2.py"
-default_strategy_filepath: str = "./boom/main_2.py"
+# default_strategy_filepath: str = "./boom/ema_macd_v2.py"
+default_strategy_filepath: str = "./boom/current_strategy_mix.py"
 default_strategy_function_name: str = "getMyPosition"
 strategy_file_not_found_message: str = "Strategy file not found"
 could_not_load_spec_message: str = "Could not load spec for module from strategy file"
@@ -78,6 +78,7 @@ GRAPH_OPTIONS: List[str] = [
     "capital-util",
     "sharpe-heat-map",
     "cum-sharpe",
+    "inst-pnl",  
 ]
 
 
@@ -110,7 +111,7 @@ class Params:
         strategy_function_name: str = default_strategy_function_name,
         strategy_function: FunctionType | None = None,
         start_day: int = 1,
-        end_day: int = 750,
+        end_day: int = 1000,
         enable_commission: bool = True,
         graphs: List[str] = ["cum-pnl", "sharpe-heat-map", "daily-pnl"],
         prices_filepath: str = "./prices.txt",
@@ -454,6 +455,20 @@ def generate_sharpe_ratio_subplot(results: BacktesterResults, subplot: Axes) -> 
 
     return subplot
 
+def generate_inst_pnl_subplot(results: BacktesterResults, subplot: Axes) -> Axes:
+    """Bar chart of cumulative P&L per instrument."""
+    # cumulative PnL per instrument
+    inst_pnls = np.sum(results["daily_instrument_returns"], axis=1)
+    instruments = np.arange(len(inst_pnls))
+
+    subplot.set_title("Cumulative P&L by Instrument", fontsize=12, fontweight="bold")
+    subplot.set_xlabel("Instrument #", fontsize=10)
+    subplot.set_ylabel("P&L ($)", fontsize=10)
+    subplot.bar(instruments, inst_pnls)
+    subplot.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+    subplot.spines["top"].set_visible(False)
+    subplot.spines["right"].set_visible(False)
+    return subplot
 
 def get_subplot(graph_type: str, results: BacktesterResults, subplot: Axes) -> Axes:
     if graph_type == "daily-pnl":
@@ -471,6 +486,9 @@ def get_subplot(graph_type: str, results: BacktesterResults, subplot: Axes) -> A
     elif graph_type == "cum-sharpe":
         return generate_sharpe_ratio_subplot(results,
             subplot)
+    elif graph_type == "inst-pnl":
+        return generate_inst_pnl_subplot(results, subplot)
+
 
 
 def get_ema(instrument_price_history: ndarray, lookback: int) -> ndarray:
@@ -478,7 +496,39 @@ def get_ema(instrument_price_history: ndarray, lookback: int) -> ndarray:
     return price_series.ewm(span=lookback,
         adjust=False).mean()
 
+# def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
+#     # standard Wilder’s RSI
+#     delta = prices.diff().fillna(0)
+#     up   = delta.clip(lower=0)
+#     down = -delta.clip(upper=0)
+#     # first average
+#     roll_up   = up.rolling(window=period, min_periods=period).mean()
+#     roll_down = down.rolling(window=period, min_periods=period).mean()
+#     # subsequent Wilder smoothing
+#     roll_up   = roll_up.shift(1) * (period-1)/period + up/period
+#     roll_down = roll_down.shift(1) * (period-1)/period + down/period
+#     rs = roll_up / roll_down
+#     rsi = 100 - (100 / (1 + rs))
+#     return rsi.to_numpy()
 
+def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
+    # 1) Calculate price changes
+    delta = prices.diff()
+
+    # 2) Separate gains and losses
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    # 3) Wilder’s smoothing via ewm: α = 1/period → com = period−1
+    avg_gain = gain.ewm(com=period-1, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(com=period-1, min_periods=period, adjust=False).mean()
+
+    # 4) Compute RSI
+    rs  = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+
+    # Return as numpy array to match your existing code
+    return rsi.to_numpy()
 # BACKTESTER CLASS ################################################################################
 class Backtester:
     def __init__(self, params: Params) -> None:
@@ -694,10 +744,11 @@ class Backtester:
 
     def show_price_entries(self, backtester_results: BacktesterResults) -> None:
         """
-		Generates a graph that shows the trades that were made on each instrument.
-		:param backtester_results: Results of a backtester
-		:return: None
-		"""
+        Generates a graph that shows the trades that were made on each instrument,
+        with a secondary MACD/Signal subplot beneath for each instrument.
+        :param backtester_results: Results of a backtester
+        :return: None
+        """
         # Get Price Data
         prices_list: List[ndarray] = [
             self.price_history[instrument_no][backtester_results["start_day"] - 1:
@@ -708,19 +759,19 @@ class Backtester:
 
         # Get an ndarray of days
         days: ndarray = np.arange(backtester_results["start_day"] - 1,
-            backtester_results["end_day"])
+                                   backtester_results["end_day"])
 
         # Get buys and sells
         instrument_trades: List[List[Trade]] = [
             backtester_results["trades"][instrument_no] for instrument_no in range(0, 50)
         ]
 
-        buy_entry_prices: List[List[float]] = [[] for i in range(0, 50)]
-        buy_entry_days: List[List[int]] = [[] for i in range(0, 50)]
-        sell_entry_prices: List[List[float]] = [[] for i in range(0, 50)]
-        sell_entry_days: List[List[int]] = [[] for i in range(0, 50)]
+        buy_entry_prices: List[List[float]] = [[] for _ in range(50)]
+        buy_entry_days: List[List[int]] = [[] for _ in range(50)]
+        sell_entry_prices: List[List[float]] = [[] for _ in range(50)]
+        sell_entry_days: List[List[int]] = [[] for _ in range(50)]
 
-        for instrument_no in range(0, 50):
+        for instrument_no in range(50):
             for trade in instrument_trades[instrument_no]:
                 if trade["order_type"] == "buy":
                     buy_entry_prices[instrument_no].append(trade["price_entry"])
@@ -729,12 +780,18 @@ class Backtester:
                     sell_entry_prices[instrument_no].append(trade["price_entry"])
                     sell_entry_days[instrument_no].append(trade["day"])
 
-        # Plot each instrument's price and entries
-        fig, ax = plt.subplots(figsize=(14, 6))
+        # Create two stacked subplots: price+entries on top, MACD below
+        # fig, (ax_price, ax_macd) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+        fig, (ax_price, ax_macd, ax_rsi) = plt.subplots(
+            3, 1, figsize=(14, 10), sharex=True,
+            gridspec_kw={"height_ratios": [3, 2, 2]}
+        )
+
+
         instrument_no = 0
 
-        # Plot Price
-        line, = ax.plot(
+        # Plot initial price and entries
+        line, = ax_price.plot(
             days,
             prices[instrument_no],
             color="blue",
@@ -743,30 +800,68 @@ class Backtester:
             label="Instrument Price",
             zorder=1,
         )
-        ax.set_xlabel("Days", fontsize=10)
-        ax.set_ylabel("Price ($)", fontsize=10)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax_price.set_xlabel("Days", fontsize=10)
+        ax_price.set_ylabel("Price ($)", fontsize=10)
+        ax_price.spines["top"].set_visible(False)
+        ax_price.spines["right"].set_visible(False)
 
-        # Plot entries
-        buy_scatter = ax.scatter(buy_entry_days[instrument_no],
+        buy_scatter = ax_price.scatter(
+            buy_entry_days[instrument_no],
             buy_entry_prices[instrument_no],
             color="green",
             marker="^",
             s=100,
             label="Long Entry",
-            zorder=3)
-        sell_scatter = ax.scatter(sell_entry_days[instrument_no],
+            zorder=3,
+        )
+        sell_scatter = ax_price.scatter(
+            sell_entry_days[instrument_no],
             sell_entry_prices[instrument_no],
             color="red",
             marker="v",
             s=100,
             label="Short Entry",
-            zorder=3)
+            zorder=3,
+        )
 
-        ax.set_title(f"Instrument #{instrument_no} Buys/Sells")
+        ax_price.set_title(f"Instrument #{instrument_no} Buys/Sells")
+        ax_price.legend()
+        ax_price.grid(True, alpha=0.7)
 
-        # Event handler for switching between plots
+        # Compute initial MACD & Signal
+        price_series = prices[instrument_no]
+        df = pd.DataFrame(price_series)
+        ema12 = df.ewm(span=12, adjust=False).mean().to_numpy().flatten()
+        ema26 = df.ewm(span=26, adjust=False).mean().to_numpy().flatten()
+        macd_vals = ema12 - ema26
+        signal_vals = pd.Series(macd_vals).ewm(span=9, adjust=False).mean().to_numpy().flatten()
+
+        line_macd, = ax_macd.plot(days, macd_vals, label="MACD")
+        line_signal, = ax_macd.plot(days, signal_vals, label="Signal")
+        ax_macd.axhline(0, linestyle="--")
+        ax_macd.set_ylabel("MACD / Signal")
+        ax_macd.set_xlabel("Days")
+        ax_macd.set_title("MACD & Signal Line")
+        ax_macd.legend()
+        ax_macd.grid(True, alpha=0.7)
+        ax_macd.spines["top"].set_visible(False)
+        ax_macd.spines["right"].set_visible(False)
+    
+        # ----- RSI(14) subplot -----
+        # compute 14-period RSI on the price series
+        rsi_vals = compute_RSI(pd.DataFrame(prices[instrument_no]), period=14).flatten()
+        ax_rsi.plot(days, rsi_vals, label="RSI (14)")
+        ax_rsi.axhline(70, linestyle="--", linewidth=1)
+        ax_rsi.axhline(30, linestyle="--", linewidth=1)
+        ax_rsi.set_ylabel("RSI")
+        ax_rsi.set_xlabel("Days")
+        ax_rsi.set_title("RSI (14)")
+        ax_rsi.legend()
+        ax_rsi.grid(True, alpha=0.7)
+        ax_rsi.spines["top"].set_visible(False)
+        ax_rsi.spines["right"].set_visible(False)
+
+        # Event handler for navigation
         def on_key(event):
             nonlocal instrument_no
             if event.key == 'right':
@@ -776,31 +871,34 @@ class Backtester:
             else:
                 return
 
-            # update the line data and title
+            # Update price line
             line.set_ydata(prices[instrument_no])
+            ax_price.relim(); ax_price.autoscale_view()
 
-            buy_scatter.set_offsets(
-                np.column_stack((
-                    buy_entry_days[instrument_no],
-                    buy_entry_prices[instrument_no]
-                ))
-            )
+            # Update entry scatters
+            buy_scatter.set_offsets(np.column_stack((
+                buy_entry_days[instrument_no], buy_entry_prices[instrument_no]
+            )))
+            sell_scatter.set_offsets(np.column_stack((
+                sell_entry_days[instrument_no], sell_entry_prices[instrument_no]
+            )))
 
-            sell_scatter.set_offsets(
-                np.column_stack((
-                    sell_entry_days[instrument_no],
-                    sell_entry_prices[instrument_no]
-                ))
-            )
+            # Recompute MACD & Signal
+            ps = prices[instrument_no]
+            df2 = pd.DataFrame(ps)
+            e12 = df2.ewm(span=12, adjust=False).mean().to_numpy().flatten()
+            e26 = df2.ewm(span=26, adjust=False).mean().to_numpy().flatten()
+            m = e12 - e26
+            s = pd.Series(m).ewm(span=9, adjust=False).mean().to_numpy().flatten()
+            line_macd.set_ydata(m)
+            line_signal.set_ydata(s)
+            ax_macd.relim(); ax_macd.autoscale_view()
 
-            ax.set_title(f"Instrument #{instrument_no} Buys/Sells")
-            ax.relim()
-            ax.autoscale_view()
+            ax_price.set_title(f"Instrument #{instrument_no} Buys/Sells")
             fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect('key_press_event', on_key)
-        plt.legend()
-        plt.grid(True, alpha=0.7)
+        plt.tight_layout()
         plt.show()
 
 
@@ -812,6 +910,17 @@ def main() -> None:
         params.start_day,
         params.end_day
     )
+    # 1. Grab the per-instrument daily P&L matrix: shape (nInst, nDays)
+    daily_inst_pnl = backtester_results["daily_instrument_returns"]
+    # 2. Sum across days to get each instrument’s total P&L so far
+    cum_inst_pnl = daily_inst_pnl.sum(axis=1)   # shape (nInst,)
+    # 3. Find instrument indices where that sum is negative
+    neg_idx = np.where(cum_inst_pnl < 0)[0]     # e.g. array([0, 3, 7, …])
+    # 4. (Optional) Convert to a Python list for easy use
+    negative_instruments = neg_idx.tolist()
+
+    print("Instruments with negative cumulative returns:", negative_instruments)
+
     backtester.show_dashboard(backtester_results,
         params.graphs)
     backtester.show_price_entries(backtester_results)
