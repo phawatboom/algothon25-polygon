@@ -10,6 +10,10 @@ position_dir    = np.zeros(nInst, dtype=int)  # –1/0/+1 signal
 last_cross      = np.zeros(nInst, dtype=int)  # last crossover direction
 last_signal_dir = np.zeros(nInst, dtype=int)  # ← ADDED: remembers previous signal_dir
 
+NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
+               27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
+               43, 46, 47, 48]
+
 def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
     # 1) Calculate price changes
     delta = prices.diff()
@@ -50,59 +54,79 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
 
     # 2) Grab “today” vs “yesterday” values
     price_t = prcSoFar[:, -1]
+    price_t = prcSoFar[:, -1]
+    price_y = prcSoFar[:, -2]
     macd_t  = macd[:, -1]; macd_y = macd[:, -2]
     sig_t   = signal[:, -1]; sig_y  = signal[:, -2]
     rsi_t  = rsi_all[:, -1]
+    ema50_t = ema50[:, -1]; ema50_y = ema50[:, -2]
 
     # 3) MACD crossover logic → position_dir / last_cross
     for i in range(nins):
-        # long crossover?
-        if (
-            (macd_y[i] < sig_y[i]) 
-            and (macd_t[i] > sig_t[i]) 
-            and (macd_y[i] < 0) and (sig_y[i] < 0)
-            and (macd_t[i] < 0) and (sig_t[i] < 0)
-            and last_cross[i] != +1
+#--------------------- RSI strategy for negative returns instruments -------------------------------------
+        if i in NEG_IDX:
+            # Long crossover with RSI < 20
+            if (
+                # (macd_y[i] < sig_y[i]) 
+                # and (macd_t[i] > sig_t[i]) 
+                # and (macd_y[i] < 0) and (sig_y[i] < 0)
+                # and (macd_t[i] < 0) and (sig_t[i] < 0)
+                # and (rsi_t[i] < 30)  # RSI condition
+                (price_y[i] < ema50_y[i])
+                and (price_t[i] > ema50_t[i]) #ema50 condition
+                # and last_cross[i] != +1
             ):
+                position_dir[i] = +1
+                last_cross[i] = +1
+                
+            # Short crossover with RSI > 80
+            elif (
+                # (macd_y[i] > sig_y[i]) 
+                # and (macd_t[i] < sig_t[i]) 
+                # and (macd_y[i] > 0) and (sig_y[i] > 0)
+                # and (macd_t[i] > 0) and (sig_t[i] > 0)
+                # and (rsi_t[i] > 70)  # RSI condition
+                (price_y[i] > ema50_y[i])
+                and (price_t[i] < ema50_t[i]) #ema50 condition
+                and last_cross[i] != -1
+            ):
+                position_dir[i] = -1
+                last_cross[i] = -1
+        
+#----------------------------------------------------------------------------------------------------
+        # For positive return instruments: Original MACD logic
+        else:
+        # long crossover?
+            if (
+                (macd_y[i] < sig_y[i]) 
+                and (macd_t[i] > sig_t[i]) 
+                and (macd_y[i] < 0) and (sig_y[i] < 0)
+                and (macd_t[i] < 0) and (sig_t[i] < 0)
+                and last_cross[i] != +1
+                ):
 
-            position_dir[i] = +1
-            last_cross[i]   = +1
-        # short crossover?
-        elif (
-            # detects crosses downwards
-            (macd_y[i] > sig_y[i]) 
-            and (macd_t[i] < sig_t[i]) 
-            and (macd_y[i] > 0) and (sig_y[i] > 0)
-            and (macd_t[i] > 0) and (sig_t[i] > 0)
-            and last_cross[i] != -1
-              ):
-            position_dir[i] = -1
-            last_cross[i]   = -1
+                position_dir[i] = +1
+                last_cross[i]   = +1
+            # short crossover?
+            elif (
+                # detects crosses downwards
+                (macd_y[i] > sig_y[i]) 
+                and (macd_t[i] < sig_t[i]) 
+                and (macd_y[i] > 0) and (sig_y[i] > 0)
+                and (macd_t[i] > 0) and (sig_t[i] > 0)
+                and last_cross[i] != -1
+                ):
+                position_dir[i] = -1
+                last_cross[i]   = -1
 
-#-------------------------------------------------------------
-    # # 5) RSI logic for NEG_IDX instruments (vectorized)
-    # bad_mask = np.zeros(nInst, dtype=bool)
-    # bad_mask[NEG_IDX] = True
-
-    # # reset any previous RSI-driven signals
-    # position_dir[bad_mask] = 0
-
-    # # long when RSI < 20, short when RSI > 80
-    # rsi_long_mask  = bad_mask & (rsi_t < 20)
-    # rsi_short_mask = bad_mask & (rsi_t > 80)
-
-    # position_dir[rsi_long_mask]  = +1
-    # position_dir[rsi_short_mask] = -1
-#-------------------------------------------------------------
-    
 
     # 4) Convert float to int for signal; Build the signal vector (same as position_dir, just more readable)
     signal_dir = position_dir.astype(int)
 
-    NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
-               27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
-               43, 46, 47, 48]
-    signal_dir[NEG_IDX] = 0
+    # NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
+    #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
+    #            43, 46, 47, 48]
+    # signal_dir[NEG_IDX] = 0
 
     # … after building signal_dir …
 
