@@ -15,15 +15,24 @@ entry_prices_neg = np.zeros(nInst)             # Entry price for negative instru
 days_in_trade_neg = np.zeros(nInst, dtype=int)  # Days since entry for negative instruments
 days_since_tp_neg = 101 * np.ones(nInst, dtype=int)  # Days since last take-profit for negatives
 
-best_price_neg = np.zeros(nInst)                # Best price since entry (for trailing stop)
-take_profit_level = np.zeros(nInst)              # 15% profit target price
-stop_loss_level = np.zeros(nInst)                # 5% stop-loss price
+best_price_neg = np.zeros(nInst)                # Best price since entry
+take_profit_level = np.zeros(nInst)              # First profit target price
+second_tp_level = np.zeros(nInst)                # Second profit target price
+stop_loss_level = np.zeros(nInst)                # Stop-loss price
 trailing_stop_level = np.zeros(nInst)            # Current trailing stop price
 half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was taken
+
+# Track crossover signals for delayed entry
+crossover_signals = np.zeros((nInst, 3), dtype=int)  # [0]=today, [1]=yesterday, [2]=two_days_ago
 
 NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
                27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
                43, 46, 47, 48]
+
+FIRST_TP_PERCENT = 0.15
+SECOND_TP_MULTIPLIER = 2.0
+STOP_LOSS_PERCENT = 0.05
+TRAILING_STOP_PERCENT = 0.02
 
 def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
     # 1) Calculate price changes
@@ -46,6 +55,9 @@ def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
 
 def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     global currentPos, position_dir, last_cross, last_signal_dir
+    global entry_prices_neg, days_in_trade_neg, days_since_tp_neg
+    global best_price_neg, take_profit_level, second_tp_level, stop_loss_level
+    global trailing_stop_level, half_profit_taken, crossover_signals
 
     nins, nt = prcSoFar.shape
     if nt < 50:
