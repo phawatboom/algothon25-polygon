@@ -800,6 +800,22 @@ class Backtester:
             label="Instrument Price",
             zorder=1,
         )
+
+        # Compute and plot 12-period EMA
+        ema12_vals = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=12, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+        line_ema12, = ax_price.plot(
+            days,
+            ema12_vals,
+            linestyle="-",
+            linewidth=1.5,
+            label="EMA (12)",
+            zorder=2
+        )
+
         # Compute and plot 50-period EMA
         ema50_vals = pd.DataFrame(prices[instrument_no]).ewm(span=50, adjust=False).mean().to_numpy().flatten()
         line_ema50, = ax_price.plot(
@@ -894,6 +910,13 @@ class Backtester:
             sell_scatter.set_offsets(np.column_stack((
                 sell_entry_days[instrument_no], sell_entry_prices[instrument_no]
             )))
+            # Recompute & update EMA(12)
+            new_ema12 = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=12, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+            line_ema12.set_ydata(new_ema12)
 
             # Recompute and update the EMA:
             new_ema50 = pd.DataFrame(prices[instrument_no]).ewm(span=50, adjust=False).mean().to_numpy().flatten()

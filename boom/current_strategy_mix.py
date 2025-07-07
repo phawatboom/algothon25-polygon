@@ -10,6 +10,11 @@ position_dir    = np.zeros(nInst, dtype=int)  # –1/0/+1 signal
 last_cross      = np.zeros(nInst, dtype=int)  # last crossover direction
 last_signal_dir = np.zeros(nInst, dtype=int)  # ← ADDED: remembers previous signal_dir
 
+# New state variables for negative instruments
+entry_prices_neg = np.zeros(nInst)             # Entry price for negative instruments
+days_in_trade_neg = np.zeros(nInst, dtype=int)  # Days since entry for negative instruments
+days_since_tp_neg = 101 * np.ones(nInst, dtype=int)  # Days since last take-profit for negatives
+
 NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
                27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
                43, 46, 47, 48]
@@ -60,39 +65,73 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     sig_t   = signal[:, -1]; sig_y  = signal[:, -2]
     rsi_t  = rsi_all[:, -1]
     ema50_t = ema50[:, -1]; ema50_y = ema50[:, -2]
+    ema12_t = ema12[:, -1]; ema12_y = ema12[:, -2]
+
+# Update cool-down counters for negative instruments
+    for i in NEG_IDX:
+        if currentPos[i] == 0 and days_since_tp_neg[i] <= 100:
+            days_since_tp_neg[i] += 1
+
+    # Check exit conditions for negative instruments
+    for i in NEG_IDX:
+        if currentPos[i] != 0:
+            days_in_trade_neg[i] += 1
+            
+            # Calculate returns based on position type
+            if currentPos[i] > 0:  # Long position
+                ret = (price_t[i] - entry_prices_neg[i]) / entry_prices_neg[i]
+            else:  # Short position
+                ret = (entry_prices_neg[i] - price_t[i]) / entry_prices_neg[i]
+                
+            # Check exit conditions
+            if ret >= 0.15:  # Take-profit
+                position_dir[i] = 0
+                days_since_tp_neg[i] = 0
+                entry_prices_neg[i] = 0
+                days_in_trade_neg[i] = 0
+            elif ret <= -0.03 or days_in_trade_neg[i] >= 100:  # Stop-loss or timeout
+                position_dir[i] = 0
+                entry_prices_neg[i] = 0
+                days_in_trade_neg[i] = 0
+
 
     # 3) MACD crossover logic → position_dir / last_cross
     for i in range(nins):
-#--------------------- RSI strategy for negative returns instruments -------------------------------------
+#--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
         if i in NEG_IDX:
-            # Long crossover with RSI < 20
-            if (
-                # (macd_y[i] < sig_y[i]) 
-                # and (macd_t[i] > sig_t[i]) 
-                # and (macd_y[i] < 0) and (sig_y[i] < 0)
-                # and (macd_t[i] < 0) and (sig_t[i] < 0)
-                # and (rsi_t[i] < 30)  # RSI condition
-                (price_y[i] < ema50_y[i])
-                and (price_t[i] > ema50_t[i]) #ema50 condition
-                # and last_cross[i] != +1
-            ):
-                position_dir[i] = +1
-                last_cross[i] = +1
-                
-            # Short crossover with RSI > 80
-            elif (
-                # (macd_y[i] > sig_y[i]) 
-                # and (macd_t[i] < sig_t[i]) 
-                # and (macd_y[i] > 0) and (sig_y[i] > 0)
-                # and (macd_t[i] > 0) and (sig_t[i] > 0)
-                # and (rsi_t[i] > 70)  # RSI condition
-                (price_y[i] > ema50_y[i])
-                and (price_t[i] < ema50_t[i]) #ema50 condition
-                and last_cross[i] != -1
-            ):
-                position_dir[i] = -1
-                last_cross[i] = -1
-        
+            if currentPos[i] == 0 and days_since_tp_neg[i] > 100:
+
+                # Long crossover with RSI < 20
+                if (
+                    # (macd_y[i] < sig_y[i]) 
+                    # and (macd_t[i] > sig_t[i]) 
+                    # and (macd_y[i] < 0) and (sig_y[i] < 0)
+                    # and (macd_t[i] < 0) and (sig_t[i] < 0)
+                    # and (rsi_t[i] < 30)  # RSI condition\
+                    ema12_y[i] < ema50_y[i] and ema12_t[i] > ema50_t[i]
+                    # (price_y[i] < ema50_y[i]) and (price_t[i] > ema50_t[i]) #ema50 condition
+                    # and last_cross[i] != +1
+                ):
+                    position_dir[i] = +1
+                    entry_prices_neg[i] = price_t[i]
+                    days_in_trade_neg[i] = 0
+                    # last_cross[i] = +1
+                    
+                # Short crossover with RSI > 80
+                elif (
+                    # (macd_y[i] > sig_y[i]) 
+                    # and (macd_t[i] < sig_t[i]) 
+                    # and (macd_y[i] > 0) and (sig_y[i] > 0)
+                    # and (macd_t[i] > 0) and (sig_t[i] > 0)
+                    # and (rsi_t[i] > 70)  # RSI condition
+                    ema12_y[i] > ema50_y[i] and ema12_t[i] < ema50_t[i]
+                    # (price_y[i] > ema50_y[i]) and (price_t[i] < ema50_t[i]) #ema50 condition
+                    # and last_cross[i] != -1
+                ):
+                    position_dir[i] = -1
+                    entry_prices_neg[i] = price_t[i]
+                    days_in_trade_neg[i] = 0
+                    # last_cross[i] = -1
 #----------------------------------------------------------------------------------------------------
         # For positive return instruments: Original MACD logic
         else:
