@@ -24,8 +24,8 @@ half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was ta
 
 # Trading parameters
 
-FIRST_TP_PERCENT = 0.45
-SECOND_TP_MULTIPLIER = 1.2
+FIRST_TP_PERCENT = 0.12
+SECOND_TP_MULTIPLIER = 2.0
 STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
 COOLDOWN_DAYS = 60      # Days to wait after taking full profit
@@ -92,12 +92,12 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     ema12_t = ema12[:, -1]; ema12_y = ema12[:, -2]
 
 # Update cool-down counters for negative instruments
-    for i in NEG_IDX:
+    for i in range(nins):
         if currentPos[i] == 0 and days_since_tp_neg[i] <= COOLDOWN_DAYS:
             days_since_tp_neg[i] += 1
 
     # Check exit conditions for negative instruments
-    for i in NEG_IDX:
+    for i in range(nins):
         if currentPos[i] != 0:
             days_in_trade_neg[i] += 1
             
@@ -184,7 +184,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     crossover_signals[:, 0] = 0  # Reset today's signals
 
     # Detect today's crossover signals for negative instruments
-    for i in NEG_IDX:
+    for i in range(nins):
         # EMA crossover long signal
         if ema12_y[i] < ema50_y[i] and ema12_t[i] > ema50_t[i]:
             crossover_signals[i, 0] = +1
@@ -195,60 +195,33 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     # 3) MACD crossover logic → position_dir / last_cross
     for i in range(nins):
 #--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
-        if i in NEG_IDX:
-            if currentPos[i] == 0 and days_since_tp_neg[i] > COOLDOWN_DAYS:
-
-                # Use signal from 2 days ago (delayed entry)
-                delayed_signal = crossover_signals[i, ENTRY_DELAY]
+        if currentPos[i] == 0 and days_since_tp_neg[i] > COOLDOWN_DAYS:
+            # Use signal from 2 days ago (delayed entry)
+            delayed_signal = crossover_signals[i, ENTRY_DELAY]
+            
+            # Long entry based on delayed signal
+            if delayed_signal == +1:
+                position_dir[i] = +1
+                entry_prices_neg[i] = price_t[i]
+                best_price_neg[i] = price_t[i]
+                take_profit_level[i] = price_t[i] * (1 + FIRST_TP_PERCENT)
+                second_tp_level[i] = price_t[i] * (1 + FIRST_TP_PERCENT * SECOND_TP_MULTIPLIER)
+                stop_loss_level[i] = price_t[i] * (1 - STOP_LOSS_PERCENT)
+                days_in_trade_neg[i] = 0
+                half_profit_taken[i] = False
                 
-                # Long entry based on delayed signal
-                if delayed_signal == +1:
-                    position_dir[i] = +1
-                    entry_prices_neg[i] = price_t[i]
-                    best_price_neg[i] = price_t[i]
-                    take_profit_level[i] = price_t[i] * (1 + FIRST_TP_PERCENT)
-                    second_tp_level[i] = price_t[i] * (1 + FIRST_TP_PERCENT * SECOND_TP_MULTIPLIER)
-                    stop_loss_level[i] = price_t[i] * (1 - STOP_LOSS_PERCENT)
-                    days_in_trade_neg[i] = 0
-                    half_profit_taken[i] = False
-                    
-                # Short entry based on delayed signal
-                elif delayed_signal == -1:
-                    position_dir[i] = -1
-                    entry_prices_neg[i] = price_t[i]
-                    best_price_neg[i] = price_t[i]
-                    take_profit_level[i] = price_t[i] * (1 - FIRST_TP_PERCENT)
-                    second_tp_level[i] = price_t[i] * (1 - FIRST_TP_PERCENT * SECOND_TP_MULTIPLIER)
-                    stop_loss_level[i] = price_t[i] * (1 + STOP_LOSS_PERCENT)
-                    days_in_trade_neg[i] = 0
-                    half_profit_taken[i] = False
+            # Short entry based on delayed signal
+            elif delayed_signal == -1:
+                position_dir[i] = -1
+                entry_prices_neg[i] = price_t[i]
+                best_price_neg[i] = price_t[i]
+                take_profit_level[i] = price_t[i] * (1 - FIRST_TP_PERCENT)
+                second_tp_level[i] = price_t[i] * (1 - FIRST_TP_PERCENT * SECOND_TP_MULTIPLIER)
+                stop_loss_level[i] = price_t[i] * (1 + STOP_LOSS_PERCENT)
+                days_in_trade_neg[i] = 0
+                half_profit_taken[i] = False
             
 #----------------------------------------------------------------------------------------------------
-        # For positive return instruments: Original MACD logic
-        else:
-        # long crossover?
-            if (
-                (macd_y[i] < sig_y[i]) 
-                and (macd_t[i] > sig_t[i]) 
-                and (macd_y[i] < 0) and (sig_y[i] < 0)
-                and (macd_t[i] < 0) and (sig_t[i] < 0)
-                and last_cross[i] != +1
-                ):
-
-                position_dir[i] = +1
-                last_cross[i]   = +1
-            # short crossover?
-            elif (
-                # detects crosses downwards
-                (macd_y[i] > sig_y[i]) 
-                and (macd_t[i] < sig_t[i]) 
-                and (macd_y[i] > 0) and (sig_y[i] > 0)
-                and (macd_t[i] > 0) and (sig_t[i] > 0)
-                and last_cross[i] != -1
-                ):
-                position_dir[i] = -1
-                last_cross[i]   = -1
-
 
     # 4) Convert float to int for signal; Build the signal vector (same as position_dir, just more readable)
     signal_dir = position_dir.astype(int)
@@ -257,10 +230,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    NEG_IDXX = [0, 4, 7, 13, 15, 18, 21, 28, 31, 34, 35, 40, 43, 48]
-    signal_dir[NEG_IDXX] = 0
-
-    # … after building signal_dir …
+    # NEG_IDXX = [2, 7, 13, 15, 18, 21, 28, 35, 43, 47, 48]
+    # signal_dir[NEG_IDXX] = 0
 
     # 5) ONLY trade instruments whose signal just flipped
     if not np.array_equal(signal_dir, last_signal_dir):
@@ -270,10 +241,10 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
         for i in changed:
             if price_t[i] > 0:
                 # For negative instruments with half profit taken, adjust position size
-                if i in NEG_IDX and half_profit_taken[i]:
-                    shares = int(round(5000.0 / price_t[i]))  # Half position size
+                if half_profit_taken[i]:
+                    shares = int(round(4500.0 / price_t[i]))  # Half position size
                 else:
-                    shares = int(round(10000.0 / price_t[i]))
+                    shares = int(round(9000.0 / price_t[i]))
                 newPos[i]   = signal_dir[i] * shares
 
         posLimits = (dlrPosLimit / price_t).astype(int)

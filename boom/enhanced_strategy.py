@@ -13,7 +13,11 @@ last_signal_dir = np.zeros(nInst, dtype=int)  # ← ADDED: remembers previous si
 # New state variables for negative instruments
 entry_prices_neg = np.zeros(nInst)             # Entry price for negative instruments
 days_in_trade_neg = np.zeros(nInst, dtype=int)  # Days since entry for negative instruments
-days_since_tp_neg = 101 * np.ones(nInst, dtype=int)  # Days since last take-profit for negatives
+
+# CHANGED: Separate cool-down trackers for long/short
+days_since_tp_long = 101 * np.ones(nInst, dtype=int)  # Days since last long take-profit
+days_since_tp_short = 101 * np.ones(nInst, dtype=int)  # Days since last short take-profit
+
 
 best_price_neg = np.zeros(nInst)                # Best price since entry
 take_profit_level = np.zeros(nInst)              # First profit target price
@@ -24,14 +28,14 @@ half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was ta
 
 # Trading parameters
 
-FIRST_TP_PERCENT = 0.45
-SECOND_TP_MULTIPLIER = 1.2
-STOP_LOSS_PERCENT = 0.03
+FIRST_TP_PERCENT = 0.6
+SECOND_TP_MULTIPLIER = 1.1
+STOP_LOSS_PERCENT = 0.02
 TRAILING_STOP_PERCENT = 0.02
 COOLDOWN_DAYS = 60      # Days to wait after taking full profit
-MAX_HOLD_DAYS = 100      # Maximum days to hold a position
+MAX_HOLD_DAYS = 300     # Maximum days to hold a position
 TRAILING_UPDATE_FREQ = 10  # Frequency to update trailing stop (days)
-ENTRY_DELAY = 2          # Days to wait before entering after signal
+ENTRY_DELAY = 2         # Days to wait before entering after signal
 
 # Track crossover signals for delayed entry
 crossover_signals = np.zeros((nInst, ENTRY_DELAY + 1), dtype=int)  # [0]=today, [1]=yesterday, [2]=two_days_ago
@@ -61,7 +65,7 @@ def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
 
 def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     global currentPos, position_dir, last_cross, last_signal_dir
-    global entry_prices_neg, days_in_trade_neg, days_since_tp_neg
+    global entry_prices_neg, days_in_trade_neg, days_since_tp_long, days_since_tp_short
     global best_price_neg, take_profit_level, second_tp_level, stop_loss_level
     global trailing_stop_level, half_profit_taken, crossover_signals
 
@@ -83,7 +87,6 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
 
     # 2) Grab “today” vs “yesterday” values
     price_t = prcSoFar[:, -1]
-    price_t = prcSoFar[:, -1]
     price_y = prcSoFar[:, -2]
     macd_t  = macd[:, -1]; macd_y = macd[:, -2]
     sig_t   = signal[:, -1]; sig_y  = signal[:, -2]
@@ -93,8 +96,12 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
 
 # Update cool-down counters for negative instruments
     for i in NEG_IDX:
-        if currentPos[i] == 0 and days_since_tp_neg[i] <= COOLDOWN_DAYS:
-            days_since_tp_neg[i] += 1
+        if currentPos[i] == 0:
+            if days_since_tp_long[i] <= COOLDOWN_DAYS:
+                days_since_tp_long[i] += 1
+            # Update short cooldown
+            if days_since_tp_short[i] <= COOLDOWN_DAYS:
+                days_since_tp_short[i] += 1
 
     # Check exit conditions for negative instruments
     for i in NEG_IDX:
@@ -129,7 +136,11 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                 half_profit_taken[i] = True
                 # Set initial trailing stop
                 trailing_stop_level[i] = price_t[i] * (1 - TRAILING_STOP_PERCENT) if currentPos[i] > 0 else price_t[i] * (1 + TRAILING_STOP_PERCENT)
-
+                # Only trigger cool-down if exited via profit target
+                if (currentPos[i] > 0 and price_t[i] >= second_tp_level[i]):
+                    days_since_tp_long[i] = int(COOLDOWN_DAYS / 4)  # Start long cool-down
+                elif (currentPos[i] < 0 and price_t[i] <= second_tp_level[i]):
+                    days_since_tp_short[i] = int(COOLDOWN_DAYS / 4)  # Start short cool-down
             # NEW CONDITION: Exit if either second TP reached OR EMA crosses opposite direction
             elif half_profit_taken[i] and (
                 (currentPos[i] > 0 and price_t[i] >= second_tp_level[i]) or  # Second profit target for long 
@@ -140,9 +151,12 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             ):
                 # Exit remaining position
                 position_dir[i] = 0
-                if ((currentPos[i] > 0 and price_t[i] >= second_tp_level[i]) or 
-                    (currentPos[i] < 0 and price_t[i] <= second_tp_level[i])):
-                    days_since_tp_neg[i] = 0  # Start cool-down only if exited via profit target
+                # Only trigger cool-down if exited via profit target
+                if (currentPos[i] > 0 and price_t[i] >= second_tp_level[i]):
+                    days_since_tp_long[i] = 0  # Start long cool-down
+                elif (currentPos[i] < 0 and price_t[i] <= second_tp_level[i]):
+                    days_since_tp_short[i] = 0  # Start short cool-down
+
                 # Reset trade state
                 entry_prices_neg[i] = 0
                 best_price_neg[i] = 0
@@ -192,17 +206,16 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
         elif ema12_y[i] > ema50_y[i] and ema12_t[i] < ema50_t[i]:
             crossover_signals[i, 0] = -1
 
-    # 3) MACD crossover logic → position_dir / last_cross
     for i in range(nins):
 #--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
         if i in NEG_IDX:
-            if currentPos[i] == 0 and days_since_tp_neg[i] > COOLDOWN_DAYS:
+            if currentPos[i] == 0:
 
                 # Use signal from 2 days ago (delayed entry)
                 delayed_signal = crossover_signals[i, ENTRY_DELAY]
                 
                 # Long entry based on delayed signal
-                if delayed_signal == +1:
+                if delayed_signal == +1 and days_since_tp_long[i] > COOLDOWN_DAYS:
                     position_dir[i] = +1
                     entry_prices_neg[i] = price_t[i]
                     best_price_neg[i] = price_t[i]
@@ -213,7 +226,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                     half_profit_taken[i] = False
                     
                 # Short entry based on delayed signal
-                elif delayed_signal == -1:
+                elif delayed_signal == -1 and days_since_tp_short[i] > COOLDOWN_DAYS:
                     position_dir[i] = -1
                     entry_prices_neg[i] = price_t[i]
                     best_price_neg[i] = price_t[i]
@@ -224,6 +237,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                     half_profit_taken[i] = False
             
 #----------------------------------------------------------------------------------------------------
+        # 3) MACD crossover logic → position_dir / last_cross
+
         # For positive return instruments: Original MACD logic
         else:
         # long crossover?
@@ -257,8 +272,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    NEG_IDXX = [0, 4, 7, 13, 15, 18, 21, 28, 31, 34, 35, 40, 43, 48]
-    signal_dir[NEG_IDXX] = 0
+    # NEG_IDXX = [0, 4, 7, 13, 15, 18, 28, 31, 34, 35, 40, 43, 47, 48]
+    # signal_dir[NEG_IDXX] = 0
 
     # … after building signal_dir …
 
@@ -271,7 +286,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             if price_t[i] > 0:
                 # For negative instruments with half profit taken, adjust position size
                 if i in NEG_IDX and half_profit_taken[i]:
-                    shares = int(round(5000.0 / price_t[i]))  # Half position size
+                    shares = int(round(4000.0 / price_t[i]))  # Half position size
                 else:
                     shares = int(round(10000.0 / price_t[i]))
                 newPos[i]   = signal_dir[i] * shares

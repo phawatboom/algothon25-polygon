@@ -29,9 +29,9 @@ NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25,
                27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
                43, 46, 47, 48]
 
-FIRST_TP_PERCENT = 0.15
-SECOND_TP_MULTIPLIER = 2.0
-STOP_LOSS_PERCENT = 0.05
+FIRST_TP_PERCENT = 0.4
+SECOND_TP_MULTIPLIER = 1.2
+STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
 
 def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
@@ -251,8 +251,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    # NEG_IDXX = [2, 7, 13, 15, 18, 21, 28, 35, 43, 47, 48]
-    # signal_dir[NEG_IDXX] = 0
+    NEG_IDXX = [0, 4, 7, 13, 18, 21, 28, 34, 35, 40, 42, 48, 15, 31, 43, 47]
+    signal_dir[NEG_IDXX] = 0
 
     # … after building signal_dir …
 
@@ -265,9 +265,9 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             if price_t[i] > 0:
                 # For negative instruments with half profit taken, adjust position size
                 if i in NEG_IDX and half_profit_taken[i]:
-                    shares = int(round(4500.0 / price_t[i]))  # Half position size
+                    shares = int(round(6000.0 / price_t[i]))  # Half position size
                 else:
-                    shares = int(round(9000.0 / price_t[i]))
+                    shares = int(round(10000.0 / price_t[i]))
                 newPos[i]   = signal_dir[i] * shares
 
         posLimits = (dlrPosLimit / price_t).astype(int)

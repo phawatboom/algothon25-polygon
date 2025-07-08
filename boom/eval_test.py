@@ -5,7 +5,7 @@ import pandas as pd
 # from main import getMyPosition as getPosition
 # from main_2 import getMyPosition as getPosition
 # from main_ema_macd import getMyPosition as getPosition
-from ema_macd_v2 import getMyPosition as getPosition
+from advanced_strategy import getMyPosition as getPosition
 # from josh_code import getMyPosition as getPosition
 nInst = 50
 nt = 0
