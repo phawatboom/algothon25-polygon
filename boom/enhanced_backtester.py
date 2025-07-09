@@ -511,7 +511,8 @@ def get_ema(instrument_price_history: ndarray, lookback: int) -> ndarray:
 #     rsi = 100 - (100 / (1 + rs))
 #     return rsi.to_numpy()
 
-def compute_RSI(prices: pd.DataFrame, period: int = 14) -> np.ndarray:
+def compute_RSI(prices: pd.DataFrame, period: int = 30
+) -> np.ndarray:
     # 1) Calculate price changes
     delta = prices.diff()
 
@@ -815,6 +816,33 @@ class Backtester:
             label="EMA (12)",
             zorder=2
         )
+                # Compute and plot 15-period EMA
+        ema15_vals = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=15, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+        line_ema15, = ax_price.plot(
+            days,
+            ema15_vals,
+            linestyle="-",
+            linewidth=1.5,
+            label="EMA (15)",
+            zorder=2
+        )
+        ema30_vals = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=30, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+        line_ema30, = ax_price.plot(
+            days,
+            ema30_vals,
+            linestyle="-",
+            linewidth=1.5,
+            label="EMA (30)",
+            zorder=2
+        )
 
         # Compute and plot 50-period EMA
         ema50_vals = pd.DataFrame(prices[instrument_no]).ewm(span=50, adjust=False).mean().to_numpy().flatten()
@@ -824,6 +852,15 @@ class Backtester:
             linestyle="-",
             linewidth=2,
             label="EMA (50)",
+            zorder=2
+        )
+        ema200_vals = pd.DataFrame(prices[instrument_no]).ewm(span=200, adjust=False).mean().to_numpy().flatten()
+        line_ema200, = ax_price.plot(
+            days,
+            ema200_vals,
+            linestyle="-",
+            linewidth=2,
+            label="EMA (200)",
             zorder=2
         )
 
@@ -877,13 +914,13 @@ class Backtester:
     
         # ----- RSI(14) subplot -----
         # compute 14-period RSI on the price series
-        rsi_vals = compute_RSI(pd.DataFrame(prices[instrument_no]), period=14).flatten()
-        ax_rsi.plot(days, rsi_vals, label="RSI (14)")
+        rsi_vals = compute_RSI(pd.DataFrame(prices[instrument_no]), period=30).flatten()
+        line_rsi, = ax_rsi.plot(days, rsi_vals, label="RSI (30)")
         ax_rsi.axhline(70, linestyle="--", linewidth=1)
         ax_rsi.axhline(30, linestyle="--", linewidth=1)
         ax_rsi.set_ylabel("RSI")
         ax_rsi.set_xlabel("Days")
-        ax_rsi.set_title("RSI (14)")
+        ax_rsi.set_title("RSI (30)")
         ax_rsi.legend()
         ax_rsi.grid(True, alpha=0.7)
         ax_rsi.spines["top"].set_visible(False)
@@ -918,6 +955,23 @@ class Backtester:
                         .flatten()
             line_ema12.set_ydata(new_ema12)
 
+            new_ema15 = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=15, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+            line_ema15.set_ydata(new_ema15)
+
+            new_ema30 = pd.DataFrame(prices[instrument_no]) \
+                        .ewm(span=30, adjust=False) \
+                        .mean() \
+                        .to_numpy() \
+                        .flatten()
+            line_ema30.set_ydata(new_ema30)
+
+            new_ema200 = pd.DataFrame(prices[instrument_no]).ewm(span=200, adjust=False).mean().to_numpy().flatten()
+            line_ema200.set_ydata(new_ema200)
+
             # Recompute and update the EMA:
             new_ema50 = pd.DataFrame(prices[instrument_no]).ewm(span=50, adjust=False).mean().to_numpy().flatten()
             line_ema50.set_ydata(new_ema50)
@@ -936,6 +990,11 @@ class Backtester:
             line_macd.set_ydata(m)
             line_signal.set_ydata(s)
             ax_macd.relim(); ax_macd.autoscale_view()
+
+            new_rsi_vals = compute_RSI(pd.DataFrame(prices[instrument_no]), period=30).flatten()
+            line_rsi.set_ydata(new_rsi_vals)
+            ax_rsi.relim(); ax_rsi.autoscale_view()
+
 
             ax_price.set_title(f"Instrument #{instrument_no} Buys/Sells")
             fig.canvas.draw_idle()

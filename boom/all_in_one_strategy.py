@@ -24,14 +24,14 @@ half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was ta
 
 # Trading parameters
 
-FIRST_TP_PERCENT = 0.45
-SECOND_TP_MULTIPLIER = 1.2
+FIRST_TP_PERCENT = 0.15
+SECOND_TP_MULTIPLIER = 2.5
 STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
 COOLDOWN_DAYS = 60      # Days to wait after taking full profit
 MAX_HOLD_DAYS = 100      # Maximum days to hold a position
 TRAILING_UPDATE_FREQ = 10  # Frequency to update trailing stop (days)
-ENTRY_DELAY = 2          # Days to wait before entering after signal
+ENTRY_DELAY = 3         # Days to wait before entering after signal
 
 # Track crossover signals for delayed entry
 crossover_signals = np.zeros((nInst, ENTRY_DELAY + 1), dtype=int)  # [0]=today, [1]=yesterday, [2]=two_days_ago
@@ -112,6 +112,10 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                 if days_in_trade_neg[i] % TRAILING_UPDATE_FREQ == 0 and half_profit_taken[i]:
                     trailing_stop_level[i] = best_price_neg[i] * (1 - TRAILING_STOP_PERCENT)
 
+                    # 📉 NEW: Move SL to break-even after +0.5 * TP hit
+                if not half_profit_taken[i] and current_return >= (FIRST_TP_PERCENT * 0.5):
+                    stop_loss_level[i] = entry_prices_neg[i]
+
             else:  # Short position
                 current_return = (entry_prices_neg[i] - price_t[i]) / entry_prices_neg[i]
 
@@ -122,6 +126,10 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                 # Update trailing stop every 10 days
                 if days_in_trade_neg[i] % 10 == 0 and half_profit_taken[i]:
                     trailing_stop_level[i] = best_price_neg[i] * (1 + TRAILING_STOP_PERCENT)
+
+                # 📉 NEW: Move SL to break-even after +0.5 * TP hit
+                if not half_profit_taken[i] and current_return >= (FIRST_TP_PERCENT * 0.5):
+                    stop_loss_level[i] = entry_prices_neg[i]
 
             # Check exit conditions
             if not half_profit_taken[i] and current_return >= FIRST_TP_PERCENT:  # First take-profit hit

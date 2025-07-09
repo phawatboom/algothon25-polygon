@@ -29,8 +29,8 @@ NEG_IDX = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25,
                27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
                43, 46, 47, 48]
 
-FIRST_TP_PERCENT = 0.4
-SECOND_TP_MULTIPLIER = 1.2
+FIRST_TP_PERCENT = 0.15
+SECOND_TP_MULTIPLIER = 2.5
 STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
 
@@ -81,7 +81,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     price_y = prcSoFar[:, -2]
     macd_t  = macd[:, -1]; macd_y = macd[:, -2]
     sig_t   = signal[:, -1]; sig_y  = signal[:, -2]
-    rsi_t  = rsi_all[:, -1]
+    rsi_t  = rsi_all[:, -1]; rsi_y = rsi_all[:, -2]
     ema50_t = ema50[:, -1]; ema50_y = ema50[:, -2]
     ema12_t = ema12[:, -1]; ema12_y = ema12[:, -2]
 
@@ -186,7 +186,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
         elif ema12_y[i] > ema50_y[i] and ema12_t[i] < ema50_t[i]:
             crossover_signals[i, 0] = -1
 
-    # 3) MACD crossover logic → position_dir / last_cross
+
     for i in range(nins):
 #--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
         if i in NEG_IDX:
@@ -219,6 +219,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             
 #----------------------------------------------------------------------------------------------------
         # For positive return instruments: Original MACD logic
+        # 3) MACD crossover logic → position_dir / last_cross
         else:
         # long crossover?
             if (
@@ -226,6 +227,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                 and (macd_t[i] > sig_t[i]) 
                 and (macd_y[i] < 0) and (sig_y[i] < 0)
                 and (macd_t[i] < 0) and (sig_t[i] < 0)
+                # and rsi_t[i] < 45  # RSI condition for long entry
                 and last_cross[i] != +1
                 ):
 
@@ -238,6 +240,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
                 and (macd_t[i] < sig_t[i]) 
                 and (macd_y[i] > 0) and (sig_y[i] > 0)
                 and (macd_t[i] > 0) and (sig_t[i] > 0)
+                # and rsi_t[i] > 55  # RSI condition for short entry
                 and last_cross[i] != -1
                 ):
                 position_dir[i] = -1

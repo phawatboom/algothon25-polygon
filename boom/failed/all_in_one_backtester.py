@@ -21,15 +21,19 @@ INSTRUMENT_POSITION_LIMIT: int = 10000
 COMMISSION_RATE: float = 0.0005
 NUMBER_OF_INSTRUMENTS: int = 50
 
+# PLOT_COLORS["tp"] = "#4CAF50"   # or whatever
+# PLOT_COLORS["sl"] = "#F44336"
+
 PLOT_COLORS: Dict[str, str] = {
     "pnl": "#2ca02c",
     "cum_pnl": "#1f77b4",
     "utilisation": "#ff7f0e",
     "sharpe_change": "#d62728",
+    "tp" : "#4CAF50",
+    "sl" : "#F44336"
 }
 
 default_strategy_filepath: str = "./boom/all_in_one_strategy.py"
-# default_strategy_filepath: str = "./boom/current_strategy_mix.py"
 default_strategy_function_name: str = "getMyPosition"
 strategy_file_not_found_message: str = "Strategy file not found"
 could_not_load_spec_message: str = "Could not load spec for module from strategy file"
@@ -102,6 +106,10 @@ class BacktesterResults(TypedDict):
     trades: Dict[int, List[Trade]]
     start_day: int
     end_day: int
+
+    exit_prices: Dict[int, List[float]]
+    exit_days:   Dict[int, List[int]]
+    exit_types:  Dict[int, List[str]]
 
 
 class Params:
@@ -587,6 +595,12 @@ class Backtester:
         trades: Dict[int, List[Trade]] = {instrument: [] for instrument in range(0,
             50)}
         requested_positions_history: List[List[int]] = []
+
+        # ←── ADD THIS ──►
+        exit_prices = {i: [] for i in range(NUMBER_OF_INSTRUMENTS)}
+        exit_days   = {i: [] for i in range(NUMBER_OF_INSTRUMENTS)}
+        exit_types  = {i: [] for i in range(NUMBER_OF_INSTRUMENTS)}  # 'tp' or 'sl'
+
         for instrument_no in range(0,
             50): requested_positions_history.append([0])
 
@@ -639,10 +653,10 @@ class Backtester:
             cash -= current_prices.dot(delta_positions) + commission
 
             # Update current positions and add to position history
-            current_positions = np.array(adjusted_positions)
-            for instrument in range(0,
-                50):
-                position_history[instrument].append(current_positions[instrument])
+            # current_positions = np.array(adjusted_positions)
+            # for instrument in range(0,
+            #     50):
+            #     position_history[instrument].append(current_positions[instrument])
 
             # Get total value of all positions
             positions_value: float = current_positions.dot(current_prices)
@@ -662,6 +676,28 @@ class Backtester:
                     instrument_return: float = delta_price * position
                     instrument_returns[instrument].append(instrument_return)
 
+            # 1) EXIT DETECTION: compare yesterday vs today’s new position
+            for inst in range(NUMBER_OF_INSTRUMENTS):
+                prev_pos = position_history[inst][-1]        # yesterday’s
+                curr_pos = adjusted_positions[inst]          # today’s
+                if prev_pos != 0 and curr_pos == 0:
+                    price = current_prices[inst]
+                    tp = config.get(inst, {}).get("takeprofit", None)
+                    sl = config.get(inst, {}).get("stoploss", None)
+                    if tp is not None and price >= tp:
+                        exit_types[inst].append("tp")
+                    elif sl is not None and price <= sl:
+                        exit_types[inst].append("sl")
+                    exit_prices[inst].append(price)
+                    exit_days[inst].append(day)
+
+            # 2) NOW append today’s position into history
+            for inst in range(NUMBER_OF_INSTRUMENTS):
+                position_history[inst].append(adjusted_positions[inst])
+
+            # 3) THEN update current_positions
+            current_positions = adjusted_positions.copy()
+
             # Add to trades history
             for instrument_no in range(0,
                 50):
@@ -675,7 +711,7 @@ class Backtester:
                     new_trade["day"] = day
                     trades[instrument_no].append(new_trade)
                     requested_positions_history[instrument_no].append(new_positions[instrument_no])
-
+            
             # Update portfolio value
             portfolio_value = cash + positions_value
 
@@ -690,6 +726,11 @@ class Backtester:
         backtester_results["trades"] = trades
         backtester_results["start_day"] = start_day
         backtester_results["end_day"] = end_day
+
+            # ←── ADD THIS ──►
+        backtester_results["exit_prices"] = exit_prices
+        backtester_results["exit_days"  ] = exit_days
+        backtester_results["exit_types" ] = exit_types
 
         return backtester_results
 
@@ -852,6 +893,33 @@ class Backtester:
             zorder=3,
         )
 
+        # ←── INSERT HERE ──►
+        tp_days, tp_prices = [], []
+        sl_days, sl_prices = [], []
+        for inst in range(NUMBER_OF_INSTRUMENTS):
+            for typ, d, p in zip(
+                backtester_results["exit_types"][inst],
+                backtester_results["exit_days"  ][inst],
+                backtester_results["exit_prices"][inst]
+            ):
+                if typ == "tp":
+                    tp_days.append(d); tp_prices.append(p)
+                elif typ == "sl":
+                    sl_days.append(d); sl_prices.append(p)
+
+        ax_price.scatter(tp_days, tp_prices,
+                        marker="X", s=100,
+                        color=PLOT_COLORS["tp"],
+                        label="Take Profit", zorder=5)
+        ax_price.scatter(sl_days, sl_prices,
+                        marker="X", s=100,
+                        color=PLOT_COLORS["sl"],
+                        label="Stop Loss",  zorder=5)
+        # ←───────────────────────────────────────
+
+        ax_price.set_title(...)
+        ax_price.legend()
+
         ax_price.set_title(f"Instrument #{instrument_no} Buys/Sells")
         ax_price.legend()
         ax_price.grid(True, alpha=0.7)
@@ -949,9 +1017,21 @@ class Backtester:
 def main() -> None:
     params: Params = parse_command_line_args()
     backtester: Backtester = Backtester(params)
+
+    # build one TP/SL config for every instrument 0…49
+    FIRST_TP_PERCENT  = 0.15
+    STOP_LOSS_PERCENT = 0.05
+    config = {
+        inst: {"takeprofit": FIRST_TP_PERCENT, "stoploss": STOP_LOSS_PERCENT}
+        for inst in range(NUMBER_OF_INSTRUMENTS)
+    }
+        # stash it on your backtester so run() can still see it
+    # backtester.config = config
+
     backtester_results: BacktesterResults = backtester.run(
         params.start_day,
-        params.end_day
+        params.end_day,
+        config=config
     )
     # 1. Grab the per-instrument daily P&L matrix: shape (nInst, nDays)
     daily_inst_pnl = backtester_results["daily_instrument_returns"]
