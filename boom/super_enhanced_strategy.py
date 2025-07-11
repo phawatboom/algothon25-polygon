@@ -4,9 +4,6 @@ import pandas as pd
 nInst = 50
 dlrPosLimit  = 10000
 
-FULL_POS_DOLLARS = 10000.0
-HALF_POS_DOLLARS = 6000.0
-
 # Your persistent state
 currentPos      = np.zeros(nInst, dtype=int)
 position_dir    = np.zeros(nInst, dtype=int)  # –1/0/+1 signal
@@ -30,8 +27,9 @@ trailing_stop_level = np.zeros(nInst)            # Current trailing stop price
 half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was taken
 
 # Trading parameters
-
-FIRST_TP_PERCENT = 0.15
+FULL_POS_DOLLARS = 10000.0
+HALF_POS_DOLLARS = 6000.0
+FIRST_TP_PERCENT = 0.015
 SECOND_TP_MULTIPLIER = 2
 STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
@@ -314,8 +312,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    EMA_STRATEGY_INSTSX = [34, 43]
-    signal_dir[EMA_STRATEGY_INSTSX] = 0
+    DO_NOT_TRADE_INSTS = [34, 43]
+    signal_dir[DO_NOT_TRADE_INSTS] = 0
 
     # … after building signal_dir …
 
