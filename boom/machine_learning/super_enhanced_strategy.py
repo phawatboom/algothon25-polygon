@@ -4,6 +4,7 @@ import pandas as pd
 nInst = 50
 dlrPosLimit  = 10000
 
+
 # Your persistent state
 currentPos      = np.zeros(nInst, dtype=int)
 position_dir    = np.zeros(nInst, dtype=int)  # –1/0/+1 signal
@@ -18,6 +19,7 @@ days_in_trade_neg = np.zeros(nInst, dtype=int)  # Days since entry for negative 
 days_since_tp_long = 101 * np.ones(nInst, dtype=int)  # Days since last long take-profit
 days_since_tp_short = 101 * np.ones(nInst, dtype=int)  # Days since last short take-profit
 
+
 best_price_neg = np.zeros(nInst)                # Best price since entry
 take_profit_level = np.zeros(nInst)              # First profit target price
 second_tp_level = np.zeros(nInst)                # Second profit target price
@@ -28,46 +30,33 @@ half_profit_taken = np.zeros(nInst, dtype=bool)  # Track if half position was ta
 # Trading parameters
 FULL_POS_DOLLARS = 10000.0
 HALF_POS_DOLLARS = 6000.0
+
 FIRST_TP_PERCENT = 0.15
-SECOND_TP_MULTIPLIER = 2.5
+SECOND_TP_MULTIPLIER = 2
 STOP_LOSS_PERCENT = 0.03
 TRAILING_STOP_PERCENT = 0.02
-COOLDOWN_DAYS = 60    # Days to wait after taking full profit
-MAX_HOLD_DAYS = 80    # Maximum days to hold a position
-TRAILING_UPDATE_FREQ = 3  # Frequency to update trailing stop (days)
+COOLDOWN_DAYS = 25     # Days to wait after taking full profit
+MAX_HOLD_DAYS = 60    # Maximum days to hold a position
+TRAILING_UPDATE_FREQ = 5  # Frequency to update trailing stop (days)
 ENTRY_DELAY = 2         # Days to wait before entering after signal
 
+MAX_ENTRY_DELAY = 10
 # Track crossover signals for delayed entry
-crossover_signals = np.zeros((nInst, ENTRY_DELAY + 1), dtype=int)  # [0]=today, [1]=yesterday, [2]=two_days_ago
+crossover_signals = np.zeros((nInst, MAX_ENTRY_DELAY + 1), dtype=int)  # [0]=today, [1]=yesterday, [2]=two_days_ago
 
 # EMA_STRATEGY_INSTS = [0, 2, 4, 5, 7, 10, 13, 15, 18, 20, 21, 25, 
 #                27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
 #                43, 46, 47, 48]
 
-# EMA_STRATEGY_INSTS = [0, 2, 4, 5, 10, 13, 20, 25, 
-#                27, 30, 33, 39, 42, 
-#                43, 46, 47]
+EMA_STRATEGY_INSTS = [0, 2, 4, 5, 10, 13, 20, 25, 
+               27, 30, 33, 39, 42, 
+               43, 46, 47]
 
-EMA_STRATEGY_INSTS = [0, 2, 5, 10, 25, 27, 39, 47]
-
-EMA_FAST_12_21_STRATEGY_INSTS = [1, 4, 6, 31, 43]
-
-EMA_SUPER_12_15_FAST_STRATEGY_INSTS = [13, 15, 18, 34, 40, 42, 45, 46 ]
-
-MACD_RSI_STRATEGY_NEG_INSTS = [15, 18, 23, 45]
-
-EMA_UPPER_MEDIUM_STRATEGY_INSTS = []
-
-EMA_SLOW_STRATEGY_INSTS = [4, 14, 16, 20, 21, 30, 31, 33, 34, 39]
-
-EMA_MEDIUM_STRATEGY_INSTS = [7, 15, 21, 28, 35, 48]
-
-COMBINED_EMA_INSTS = list(set(EMA_STRATEGY_INSTS + EMA_SLOW_STRATEGY_INSTS + EMA_MEDIUM_STRATEGY_INSTS + EMA_FAST_12_21_STRATEGY_INSTS + EMA_SUPER_12_15_FAST_STRATEGY_INSTS))
 # SPECIFIC_STRATEGY_INSTS = [13, 20, 23, 31, 45, 46]
 
 MACD_21_50_STRATEGY_INSTS = [13, 20, 23, 31, 45, 46]
 
-# EMA_MEDIUM_STRATEGY_INSTS = [7, 15, 18, 21, 28, 31, 34, 35, 40, 48]
+RSI_STRATEGY_INSTS = [7, 15, 18, 21, 28, 31, 34, 35, 40, 48]
 
 def compute_RSI(prices: pd.DataFrame, period: int = 30) -> np.ndarray:
     # 1) Calculate price changes
@@ -132,15 +121,11 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     ema50_t = ema50[:, -1]; ema50_y = ema50[:, -2]
     ema12_t = ema12[:, -1]; ema12_y = ema12[:, -2]
     ema15_t = ema15[:, -1]; ema15_y = ema15[:, -2]
-    ema21_t = ema21[:, -1]; ema21_y = ema21[:, -2]
-    ema26_t = ema26[:, -1]; ema26_y = ema26[:, -2]
     ema30_t = ema30[:, -1]; ema30_y = ema30[:, -2]
     ema200_t = ema200[:, -1]; ema200_y = ema200[:, -2]
 
-    # Check exit conditions for negative instruments
-    for i in COMBINED_EMA_INSTS:
-
-        # Update cool-down counters 
+# Update cool-down counters for negative instruments
+    for i in EMA_STRATEGY_INSTS + RSI_STRATEGY_INSTS:
         if currentPos[i] == 0:
             if days_since_tp_long[i] <= COOLDOWN_DAYS:
                 days_since_tp_long[i] += 1
@@ -148,6 +133,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             if days_since_tp_short[i] <= COOLDOWN_DAYS:
                 days_since_tp_short[i] += 1
 
+    # Check exit conditions for negative instruments
+    for i in EMA_STRATEGY_INSTS + RSI_STRATEGY_INSTS:
         if currentPos[i] != 0:
             days_in_trade_neg[i] += 1
             
@@ -187,10 +174,10 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             # NEW CONDITION: Exit if either second TP reached OR EMA crosses opposite direction
             elif half_profit_taken[i] and (
                 (currentPos[i] > 0 and price_t[i] >= second_tp_level[i]) or  # Second profit target for long 
-                (currentPos[i] < 0 and price_t[i] <= second_tp_level[i]) or  # Second profit target for short 
+                (currentPos[i] < 0 and price_t[i] <= second_tp_level[i])   # Second profit target for short 
                 # EMA crosses opposite direction
-                (currentPos[i] > 0 and (ema12_y[i] > ema15_y[i] and ema12_t[i] < ema15_t[i])) or  # Death cross (long exit)
-                (currentPos[i] < 0 and (ema12_y[i] < ema15_y[i] and ema12_t[i] > ema15_t[i]))    # Golden cross (short exit)
+                # (currentPos[i] > 0 and (ema12_y[i] > ema15_y[i] and ema12_t[i] < ema15_t[i])) or  # Death cross (long exit)
+                # (currentPos[i] < 0 and (ema12_y[i] < ema15_y[i] and ema12_t[i] > ema15_t[i]))    # Golden cross (short exit)
             ):
                 # Exit remaining position
                 position_dir[i] = 0
@@ -232,43 +219,17 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
         elif ema12_y[i] > ema50_y[i] and ema12_t[i] < ema50_t[i]:
             crossover_signals[i, 0] = -1
 
-    for i in EMA_MEDIUM_STRATEGY_INSTS:
+    for i in RSI_STRATEGY_INSTS:
+        # EMA crossover long signal
         if ema30_y[i] < ema50_y[i] and ema30_t[i] > ema50_t[i] and rsi_t[i] < 30:
             crossover_signals[i, 0] = +1
+        # EMA crossover short signal
         elif ema30_y[i] > ema50_y[i] and ema30_t[i] < ema50_t[i] and rsi_t[i] > 70:
-            crossover_signals[i, 0] = -1
-    
-    for i in EMA_SLOW_STRATEGY_INSTS:
-        if ema50_y[i] < ema200_y[i] and ema50_t[i] > ema200_t[i]:
-            crossover_signals[i, 0] = +1
-        elif ema50_y[i] > ema200_y[i] and ema50_t[i] < ema200_t[i]:
-            crossover_signals[i, 0] = -1
-
-    for i in EMA_FAST_12_21_STRATEGY_INSTS:
-        if ema12_y[i] < ema21_y[i] and ema12_t[i] > ema21_t[i]:
-            crossover_signals[i, 0] = +1
-        elif ema12_y[i] > ema21_y[i] and ema12_t[i] < ema21_t[i]:
-            crossover_signals[i, 0] = -1
-
-    for i in EMA_SUPER_12_15_FAST_STRATEGY_INSTS:
-        if ema12_y[i] < ema15_y[i] and ema12_t[i] > ema15_t[i]:
-            crossover_signals[i, 0] = +1
-        elif ema12_y[i] > ema15_y[i] and ema12_t[i] < ema15_t[i]:
-            crossover_signals[i, 0] = -1
-
-    for i in EMA_UPPER_MEDIUM_STRATEGY_INSTS:
-        # if ema21_y[i] < ema30_y[i] and ema21_t[i] > ema30_t[i]:
-        #     crossover_signals[i, 0] = +1
-        # elif ema21_y[i] > ema30_y[i] and ema21_t[i] < ema30_t[i]:
-        #     crossover_signals[i, 0] = -1
-        if ema15_y[i] < ema200_y[i] and ema15_t[i] > ema200_t[i]:
-            crossover_signals[i, 0] = +1
-        elif ema15_y[i] > ema200_y[i] and ema15_t[i] < ema200_t[i]:
             crossover_signals[i, 0] = -1
 
     for i in range(nins):
 #--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
-        if i in COMBINED_EMA_INSTS:
+        if i in EMA_STRATEGY_INSTS + RSI_STRATEGY_INSTS:
             if currentPos[i] == 0:
 
                 # Use signal from 2 days ago (delayed entry)
@@ -304,41 +265,22 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             if (
                 (macd_21_50_y[i] < sig_13_y[i]) 
                 and (macd_21_50_t[i] > sig_13_t[i]) 
-                # and (macd_21_50_y[i] < 0) and (sig_13_y[i] < 0)
-                # and (macd_21_50_t[i] < 0) and (sig_13_t[i] < 0)
+                and (macd_21_50_y[i] < 0) and (sig_13_y[i] < 0)
+                and (macd_21_50_t[i] < 0) and (sig_13_t[i] < 0)
                 and last_cross[i] != +1
-                
             ):
                 position_dir[i] = +1
                 last_cross[i]   = +1
             elif (
                 (macd_21_50_y[i] > sig_13_y[i]) 
                 and (macd_21_50_t[i] < sig_13_t[i])
-                # and (macd_21_50_y[i] > 0) and (sig_13_y[i] > 0)
-                # and (macd_21_50_t[i] > 0) and (sig_13_t[i] > 0)
+                and (macd_21_50_y[i] > 0) and (sig_13_y[i] > 0)
+                and (macd_21_50_t[i] > 0) and (sig_13_t[i] > 0)
                 and last_cross[i] != -1
             ):
                 position_dir[i] = -1
                 last_cross[i]   = -1
-        elif i in MACD_RSI_STRATEGY_NEG_INSTS:
-            if (
-                (macd_12_26_y[i] < sig_9_y[i]) 
-                and (macd_12_26_t[i] > sig_9_t[i]) 
-                and rsi_t[i] < 50
-                and last_cross[i] != +1
-                ):
-                position_dir[i] = +1
-                last_cross[i]   = +1
-            # short crossover?
-            elif (
-                # detects crosses downwards
-                (macd_12_26_y[i] > sig_9_y[i]) 
-                and (macd_12_26_t[i] < sig_9_t[i]) 
-                and rsi_t[i] > 50
-                and last_cross[i] != -1
-                ):
-                position_dir[i] = -1
-                last_cross[i]   = -1
+
         else:
         # long crossover?
             if (
@@ -373,9 +315,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    # DO_NOT_TRADE_INSTS = [34, 43]
-    # DO_NOT_TRADE_INSTS = [15, 18, 34, 40, 45, 46]
-    # signal_dir[DO_NOT_TRADE_INSTS] = 0
+    EMA_STRATEGY_INSTSX = [34, 43]
+    signal_dir[EMA_STRATEGY_INSTSX] = 0
 
     # … after building signal_dir …
 

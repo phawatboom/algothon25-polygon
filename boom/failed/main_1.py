@@ -13,6 +13,6 @@ def getMyPosition(prcSoFar):
     lastRet = np.log(prcSoFar[:, -1] / prcSoFar[:, -2])
     lNorm = np.sqrt(lastRet.dot(lastRet))
     lastRet /= lNorm
-    rpos = np.array([int(x) for x in -3000 * lastRet / prcSoFar[:, -1]])
+    rpos = np.array([int(x) for x in -5000 * lastRet / prcSoFar[:, -1]])
     currentPos = np.array([int(x) for x in currentPos+rpos])
     return currentPos
