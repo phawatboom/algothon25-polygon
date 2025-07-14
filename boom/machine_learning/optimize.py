@@ -22,14 +22,14 @@ def run_backtest(params):
 def objective(trial):
     # Define search space
     params = {
-        'first_tp':          trial.suggest_float("first_tp", 0.01, 0.3),
-        'second_tp_mult':    trial.suggest_float("second_tp_mult", 1.5, 3.0),
-        'stop_loss':         trial.suggest_float("stop_loss", 0.005, 0.05),
-        'trailing_stop':     trial.suggest_float("trailing_stop", 0.005, 0.05),
-        'cooldown_days':     trial.suggest_int("cooldown_days", 5, 50),
-        'max_hold_days':     trial.suggest_int("max_hold_days", 10, 120),
+        'first_tp':          trial.suggest_float("first_tp", 0.08, 0.2),
+        'second_tp_mult':    trial.suggest_float("second_tp_mult", 1.5, 3.5),
+        'stop_loss':         trial.suggest_float("stop_loss", 0.02, 0.05),
+        'trailing_stop':     trial.suggest_float("trailing_stop", 0.01, 0.03),
+        'cooldown_days':     trial.suggest_int("cooldown_days", 40, 120),
+        'max_hold_days':     trial.suggest_int("max_hold_days", 40, 120),
         'entry_delay':       trial.suggest_int("entry_delay", 0, 5),
-        'trailing_update_freq': trial.suggest_int("trailing_update_freq", 1, 20),
+        'trailing_update_freq': trial.suggest_int("trailing_update_freq", 1, 10),
     }
     return run_backtest(params)
 

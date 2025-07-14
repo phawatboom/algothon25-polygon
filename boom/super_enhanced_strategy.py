@@ -58,8 +58,6 @@ EMA_SUPER_12_15_FAST_STRATEGY_INSTS = [13, 42, 46 ]
 
 MACD_RSI_STRATEGY_NEG_INSTS = [34]
 
-EMA_UPPER_MEDIUM_STRATEGY_INSTS = []
-
 EMA_FAST_12_50_BELOW_EMA_200_STRATEGY_INSTS = [23]
 
 # EMA_FAST_12_30_BELOW_EMA_200_STRATEGY_INSTS = [15, 18, 23, 45, 40, 21]
@@ -68,8 +66,13 @@ EMA_FAST_12_30_BELOW_EMA_200_STRATEGY_INSTS = [18]
 
 EMA_FAST_12_21_BELOW_EMA_200_STRATEGY_INSTS = [45]
 
-EMA_FAST_12_21_BELOW_EMA_50_STRATEGY_INSTS = [23, 40]
+EMA_FAST_12_21_BELOW_EMA_50_STRATEGY_INSTS = []
 
+EMA_15_50_THRESHOLD_EMA_200_STRATEGY_INSTS = [40]
+
+EMA_12_30_THRESHOLD_EMA_50_200_STRATEGY_INSTS = []
+
+# EMA_12_30_THRESHOLD_EMA_50_200_STRATEGY_INSTS = [15, 48]
 # EMA_SLOW_STRATEGY_INSTS = [4, 14, 16, 20, 21, 30, 31, 33, 34, 39]
 EMA_SLOW_STRATEGY_INSTS = [4, 14, 16, 20,  30, 31, 33, 39]
 
@@ -79,12 +82,13 @@ EMA_MEDIUM_STRATEGY_INSTS = [7, 28]
 COMBINED_EMA_INSTS = list(set(EMA_STRATEGY_INSTS + EMA_SLOW_STRATEGY_INSTS + EMA_MEDIUM_STRATEGY_INSTS \
                               + EMA_FAST_12_21_STRATEGY_INSTS + EMA_SUPER_12_15_FAST_STRATEGY_INSTS + \
                                 EMA_FAST_12_50_BELOW_EMA_200_STRATEGY_INSTS + EMA_FAST_12_30_BELOW_EMA_200_STRATEGY_INSTS \
-                                    + EMA_FAST_12_21_BELOW_EMA_200_STRATEGY_INSTS + EMA_FAST_12_21_BELOW_EMA_50_STRATEGY_INSTS))
+                                    + EMA_FAST_12_21_BELOW_EMA_200_STRATEGY_INSTS + EMA_FAST_12_21_BELOW_EMA_50_STRATEGY_INSTS \
+                                + EMA_15_50_THRESHOLD_EMA_200_STRATEGY_INSTS))
 # SPECIFIC_STRATEGY_INSTS = [13, 20, 23, 31, 45, 46]
 
-MACD_21_50_STRATEGY_INSTS = [13, 20, 23, 31, 45, 46, 21, 28]
+MACD_21_50_STRATEGY_INSTS = [13, 20, 31, 45, 46, 21, 28]
 
-MACD_12_26_RELAXED_STRATEGY_INSTS = [15, 35, 48]
+MACD_12_26_RELAXED_STRATEGY_INSTS = [35]
 
 # EMA_MEDIUM_STRATEGY_INSTS = [7, 15, 18, 21, 28, 31, 34, 35, 40, 48]
 
@@ -131,6 +135,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     ema21  = df.T.ewm(span=21, adjust=False).mean().T.to_numpy()
     ema26  = df.T.ewm(span=26, adjust=False).mean().T.to_numpy()
     ema30 = df.T.ewm(span=30, adjust=False).mean().T.to_numpy()
+    ema100 = df.T.ewm(span=100, adjust=False).mean().T.to_numpy()
     ema200 = df.T.ewm(span=200, adjust=False).mean().T.to_numpy()
     macd_12_26    = ema12 - ema26
     macd_21_50    = ema15 - ema50
@@ -154,6 +159,7 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     ema21_t = ema21[:, -1]; ema21_y = ema21[:, -2]
     ema26_t = ema26[:, -1]; ema26_y = ema26[:, -2]
     ema30_t = ema30[:, -1]; ema30_y = ema30[:, -2]
+    ema100_t = ema100[:, -1]; ema100_y = ema100[:, -2]
     ema200_t = ema200[:, -1]; ema200_y = ema200[:, -2]
 
     # Check exit conditions for negative instruments
@@ -275,15 +281,6 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
         elif ema12_y[i] > ema15_y[i] and ema12_t[i] < ema15_t[i]:
             crossover_signals[i, 0] = -1
 
-    for i in EMA_UPPER_MEDIUM_STRATEGY_INSTS:
-        # if ema21_y[i] < ema30_y[i] and ema21_t[i] > ema30_t[i]:
-        #     crossover_signals[i, 0] = +1
-        # elif ema21_y[i] > ema30_y[i] and ema21_t[i] < ema30_t[i]:
-        #     crossover_signals[i, 0] = -1
-        if ema15_y[i] < ema200_y[i] and ema15_t[i] > ema200_t[i]:
-            crossover_signals[i, 0] = +1
-        elif ema15_y[i] > ema200_y[i] and ema15_t[i] < ema200_t[i]:
-            crossover_signals[i, 0] = -1
     for i in EMA_FAST_12_50_BELOW_EMA_200_STRATEGY_INSTS:
         if ema12_y[i] < ema50_y[i] and ema12_t[i] > ema50_t[i] and ema12_t[i] > ema200_t[i] - 10:
             crossover_signals[i, 0] = +1
@@ -291,9 +288,9 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             crossover_signals[i, 0] = -1
 
     for i in EMA_FAST_12_30_BELOW_EMA_200_STRATEGY_INSTS:
-        if ema12_y[i] < ema30_y[i] and ema12_t[i] > ema30_t[i] and ema12_t[i] > ema200_t[i] - 10:
+        if ema12_y[i] < ema30_y[i] and ema12_t[i] > ema30_t[i] and ema12_t[i] > ema200_t[i] - 5:
             crossover_signals[i, 0] = +1
-        elif ema12_y[i] > ema30_y[i] and ema12_t[i] < ema30_t[i] and ema12_t[i] < ema200_t[i] + 10:
+        elif ema12_y[i] > ema30_y[i] and ema12_t[i] < ema30_t[i] and ema12_t[i] < ema200_t[i] + 5:
             crossover_signals[i, 0] = -1
 
     for i in EMA_FAST_12_21_BELOW_EMA_200_STRATEGY_INSTS:
@@ -307,18 +304,31 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
             crossover_signals[i, 0] = +1
         elif ema12_y[i] > ema21_y[i] and ema12_t[i] < ema21_t[i] and ema12_t[i] < ema50_t[i] + 10:
             crossover_signals[i, 0] = -1
-        
+    
+    for i in EMA_15_50_THRESHOLD_EMA_200_STRATEGY_INSTS:
+        if ema15_y[i] < ema50_y[i] and ema15_t[i] > ema50_t[i] and ema15_t[i] > ema200_t[i] - 5:
+            crossover_signals[i, 0] = +1
+        elif ema15_y[i] > ema50_y[i] and ema15_t[i] < ema50_t[i] and ema15_t[i] < ema200_t[i] + 5:
+            crossover_signals[i, 0] = -1
+    
+    for i in EMA_12_30_THRESHOLD_EMA_50_200_STRATEGY_INSTS:
+        if ema50_y[i] < ema100_y[i] and ema50_t[i] > ema100_t[i] and ema50_t[i] > ema200_t[i] - 5:
+            crossover_signals[i, 0] = +1
+        elif ema50_y[i] > ema100_y[i] and ema50_t[i] < ema100_t[i] and ema50_t[i] < ema200_t[i] + 5:
+            crossover_signals[i, 0] = -1
+
+
     for i in range(nins):
 #--------------------- EMA 50 strategy for negative returns instruments -------------------------------------
         if i in COMBINED_EMA_INSTS:
             if currentPos[i] == 0:
 
                 CUSTOM_ENTRY_DELAY = {
-                    40:0,
-                    # 15:0, 
+                    # 40:0,
+                    15:5, 
                     # 21:0, 
                     # 35:0, 
-                    # 48:0
+                    48:5
                 }
                 # default is ENTRY_DELAY
                 signal_index = CUSTOM_ENTRY_DELAY.get(i, ENTRY_DELAY)
@@ -447,8 +457,8 @@ def getMyPosition(prcSoFar: np.ndarray) -> np.ndarray:
     #            27, 28, 30, 31, 33, 34, 35, 39, 40, 42, 
     #            43, 46, 47, 48]
 
-    # DO_NOT_TRADE_INSTS = [34, 43]
-    DO_NOT_TRADE_INSTS = [48]
+
+    DO_NOT_TRADE_INSTS = [15, 48]
     signal_dir[DO_NOT_TRADE_INSTS] = 0
 
     # … after building signal_dir …

@@ -854,6 +854,15 @@ class Backtester:
             label="EMA (50)",
             zorder=2
         )
+        ema100_vals = pd.DataFrame(prices[instrument_no]).ewm(span=100, adjust=False).mean().to_numpy().flatten()
+        line_ema100, = ax_price.plot(
+            days,
+            ema100_vals,
+            linestyle="-",
+            linewidth=2,
+            label="EMA (100)",
+            zorder=2
+        )
         ema200_vals = pd.DataFrame(prices[instrument_no]).ewm(span=200, adjust=False).mean().to_numpy().flatten()
         line_ema200, = ax_price.plot(
             days,
@@ -968,6 +977,9 @@ class Backtester:
                         .to_numpy() \
                         .flatten()
             line_ema30.set_ydata(new_ema30)
+
+            new_ema100 = pd.DataFrame(prices[instrument_no]).ewm(span=100, adjust=False).mean().to_numpy().flatten()
+            line_ema100.set_ydata(new_ema100)
 
             new_ema200 = pd.DataFrame(prices[instrument_no]).ewm(span=200, adjust=False).mean().to_numpy().flatten()
             line_ema200.set_ydata(new_ema200)
