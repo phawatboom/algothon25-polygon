@@ -8,7 +8,7 @@ def getMyPosition(prcSoFar):
     nins, nt = prcSoFar.shape
     assert nins == nInst, f"Expected {nInst} instruments, got {nins}"
 
-    k = 25  # use k-day returns
+    k = 50  # use k-day returns
 
     # Need at least k+1 days to compute a k-day return
     if nt < k + 1:
@@ -24,7 +24,7 @@ def getMyPosition(prcSoFar):
     lastRet /= lNorm
 
     # Generate position changes (sell positive signals, buy negative)
-    scale = 5000
+    scale = 1400
     rpos = np.array([
         int(-scale * ret_i / prcSoFar[i, -1])
         for i, ret_i in enumerate(lastRet)

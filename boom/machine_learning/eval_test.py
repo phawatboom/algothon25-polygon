@@ -2,9 +2,12 @@
 
 import numpy as np
 import pandas as pd
-from main import getMyPosition as getPosition
-
-nInst = 0
+# from main import getMyPosition as getPosition
+# from main_2 import getMyPosition as getPosition
+# from main_ema_macd import getMyPosition as getPosition
+from super_enhanced_strategy import getMyPosition as getPosition
+# from josh_code import getMyPosition as getPosition
+nInst = 50
 nt = 0
 commRate = 0.0005
 dlrPosLimit = 10000
@@ -14,6 +17,7 @@ def loadPrices(fn):
     df=pd.read_csv(fn, sep='\s+', header=None, index_col=None)
     (nt,nInst) = df.shape
     return (df.values).T
+    # return (nInst, nt)
 
 pricesFile="./prices.txt"
 prcAll = loadPrices(pricesFile)
@@ -53,7 +57,6 @@ def calcPL(prcHist, numTestDays):
         if (totDVolume > 0):
             ret = value / totDVolume
         if (t > startDay):
-            print ("Day %d value: %.2lf todayPL: $%.2lf $-traded: %.0lf return: %.5lf" % (t,value, todayPL, totDVolume, ret))
             todayPLL.append(todayPL)
     pll = np.array(todayPLL)
     (plmu,plstd) = (np.mean(pll), np.std(pll))
@@ -62,9 +65,7 @@ def calcPL(prcHist, numTestDays):
         annSharpe = np.sqrt(249) * plmu / plstd
     return (plmu, ret, plstd, annSharpe, totDVolume)
 
-
-
-(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll,750)
+(meanpl, ret, plstd, sharpe, dvol) = calcPL(prcAll, 1000) 
 score = meanpl - 0.1*plstd
 print ("=====")
 print ("mean(PL): %.1lf" % meanpl)
